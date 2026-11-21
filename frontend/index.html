@@ -619,7 +619,7 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API_URL = 'http://localhost:3000';
+        const API_URL = 'https://nodenotes-backend.vercel.app';
 
         let allNotes = [];
         let activeNoteId = null;
@@ -690,7 +690,7 @@
             } catch (error) {
                 console.error('Error fetching notes:', error);
                 setConnectionStatus(false);
-                noteCountLabel.textContent = 'Cannot reach http://localhost:3000';
+                noteCountLabel.textContent = 'Cannot reach https://nodenotes-backend.vercel.app';
                 notesGrid.innerHTML = `
                     <div class="empty-state">
                         <h3>Backend not reachable</h3>
