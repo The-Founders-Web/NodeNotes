@@ -3,16 +3,28 @@ import cors from 'cors';
 
 const app = express();
 
+import dotenv from 'dotenv';
+dotenv.config();
+
+import connectDB from './db.js';
+
+// Connect to MongoDB
+connectDB();
+
+import Note from './noteModel.js'; // Import the Note model
+
 // Middleware
 
 app.use(cors());
 app.use(express.json());
 
-let data = [
-    { id: 1, note: 'I am learning Node.js'},
-    { id: 2, note: 'I am learning Express.js'},
-    { id: 3, note: 'Why am I Alive?'},
-];
+// Sample data for demonstration purposes
+
+// let data = [
+//     { id: 1, note: 'I am learning Node.js'},
+//     { id: 2, note: 'I am learning Express.js'},
+//     { id: 3, note: 'Why am I Alive?'},
+// ];
 
 // CRUD Operations
 // C -> CREATE -> POST REQUEST
@@ -24,43 +36,75 @@ let data = [
 
 // GET Request - READING DATA
 
-app.get('/', (req, res) => {
-    res.json(data);
+app.get('/', async (req, res) => {
+    // res.json(data);
+    let notes = await Note.find(); // Fetch all notes from the database
+    res.json(notes); // Send the notes as a JSON response
 });
 
 // POST Request - CREATING DATA
 app.post('/', (req, res) => {
-    const { note } = req.body;
-    data.push({ id: data.length + 1, note });
+    // const { note } = req.body;
+    // data.push({ id: data.length + 1, note });
 
-    // Send a response back to the client with status code 201 (Created) and a success message
-    res.status(201).send('Note added successfully!');
+    // // Send a response back to the client with status code 201 (Created) and a success message
+    // res.status(201).send('Note added successfully!');
+
+    const { note } = req.body;
+    const newNote = new Note({
+        content: note,
+    });
+    
+    newNote.save().then(() => {
+        res.status(201).send('Note added successfully!');
+    }).catch((error) => {
+        res.status(500).send('Error adding note: ' + error.message);
+    });
+
 });
 
 // PUT Request
 
 app.put('/', (req, res) => {
     const { id, note } = req.body;
-    const index = data.findIndex(item => item.id === id);
-    if (index !== -1) {
-        data[index] = { id, note };
-        res.send('Note updated successfully!');
-    } else {
-        res.status(404).send('Note not found.');
-    }
+    // const index = data.findIndex(item => item.id === id);
+    // if (index !== -1) {
+    //     data[index] = { id, note };
+    //     res.send('Note updated successfully!');
+    // } else {
+    //     res.status(404).send('Note not found.');
+    // }
+    Note.findByIdAndUpdate(id, {content : note}, {new: true}).then((updatedNote) => {
+        if (updatedNote) {
+            res.send('Note updated successfully!');
+        } else {
+            res.status(404).send('Note not found.');
+        }
+    }).catch((error) => {
+        res.status(500).send('Error updating note: ' + error.message);
+    });
 });
 
 // DELETE Request
 
 app.delete('/', (req, res) => {
     const { id } = req.body;
-    const index = data.findIndex(item => item.id === id);
-    if (index !== -1) {
-        data.splice(index, 1);
-        res.send('Note deleted successfully.');
-    } else {
-        res.status(404).send('Note not found.');
-    }
+    // const index = data.findIndex(item => item.id === id);
+    // if (index !== -1) {
+    //     data.splice(index, 1);
+    //     res.send('Note deleted successfully.');
+    // } else {
+    //     res.status(404).send('Note not found.');
+    // }
+    Note.findByIdAndDelete(id).then((deletedNote) => {
+        if (deletedNote) {
+            res.send('Note deleted successfully.');
+        } else {
+            res.status(404).send('Note not found.');
+        }
+    }).catch((error) => {
+        res.status(500).send('Error deleting note: ' + error.message);
+    });
 });
 
 

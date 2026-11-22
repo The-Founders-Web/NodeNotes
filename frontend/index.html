@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NodeNotes - No DB</title>
+    <title>NodeNotes</title>
     <style>
         :root {
             --bg-canvas: #F6F6F8;
@@ -17,7 +17,6 @@
             --danger-red: #FF3B30;
             --border-subtle: rgba(0, 0, 0, 0.05);
             --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.03);
-            --shadow-fab: 0 8px 24px rgba(255, 107, 0, 0.35);
             --radius-card: 22px;
             --radius-pill: 100px;
             --font-sans: -apple-system, BlinkMacSystemFont, "SamsungOne", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -223,6 +222,7 @@
             flex-direction: row;
             align-items: center;
             padding: 18px 22px;
+            gap: 16px;
         }
 
         .note-preview-text {
@@ -239,7 +239,7 @@
 
         .notes-grid.list-view .note-preview-text {
             -webkit-line-clamp: 2;
-            padding-right: 40px;
+            flex: 1;
         }
 
         .note-card-footer {
@@ -247,14 +247,20 @@
             align-items: center;
             justify-content: space-between;
             margin-top: 12px;
+            gap: 8px;
         }
 
-        .note-id-chip {
+        .notes-grid.list-view .note-card-footer {
+            margin-top: 0;
+            flex-shrink: 0;
+        }
+
+        .note-date-chip {
             font-size: 11px;
-            font-weight: 600;
-            color: var(--accent-orange);
-            background: rgba(255, 107, 0, 0.08);
-            padding: 3px 9px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--bg-canvas);
+            padding: 4px 10px;
             border-radius: 8px;
         }
 
@@ -414,7 +420,7 @@
 
         .editor-mode-tag {
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-secondary);
         }
 
@@ -563,9 +569,9 @@
             </div>
 
             <div class="toolbar-actions">
-                <div class="status-badge" title="Express Backend Status">
+                <div class="status-badge" id="statusBadge">
                     <span class="status-dot" id="statusDot"></span>
-                    <span id="statusText">localhost:3000</span>
+                    <span id="statusText">Connecting...</span>
                 </div>
                 <button class="icon-btn" id="toggleViewBtn" title="Switch Grid / List View" aria-label="Switch View">
                     <svg id="viewIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -619,7 +625,8 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API_URL = 'https://nodenotes-backend.vercel.app';
+        // Single source of truth for all API requests and UI status/alerts
+        const API_URL = 'https://nodenotes-backend.vercel.app/';
 
         let allNotes = [];
         let activeNoteId = null;
@@ -637,9 +644,13 @@
         const noteTextarea = document.getElementById('noteTextarea');
         const saveNoteBtn = document.getElementById('saveNoteBtn');
         const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+        const statusBadge = document.getElementById('statusBadge');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
         const toast = document.getElementById('toast');
+
+        statusBadge.title = `Backend endpoint: ${API_URL}`;
+        statusText.textContent = API_URL;
 
         let toastTimer;
         function showToast(message) {
@@ -657,13 +668,13 @@
                 statusText.textContent = 'Connected';
             } else {
                 statusDot.classList.add('offline');
-                statusText.textContent = 'Server offline';
+                statusText.textContent = `Offline (${API_URL})`;
             }
         }
 
         function escapeHTML(str) {
             const div = document.createElement('div');
-            div.textContent = str;
+            div.textContent = str || '';
             return div.innerHTML;
         }
 
@@ -672,29 +683,41 @@
             return firstLine || 'Text note';
         }
 
-        function formatToday() {
-            return new Date().toLocaleDateString('en-US', {
+        function formatDate(isoString, includeTime = false) {
+            if (!isoString) return 'Just now';
+            const d = new Date(isoString);
+            if (isNaN(d.getTime())) return 'Just now';
+
+            const options = {
                 month: 'short',
-                day: 'numeric'
-            });
+                day: 'numeric',
+                year: 'numeric'
+            };
+
+            if (includeTime) {
+                options.hour = 'numeric';
+                options.minute = '2-digit';
+            }
+
+            return d.toLocaleDateString('en-US', options);
         }
 
-        // READ (GET /)
+        // READ (GET)
         async function fetchNotes() {
             try {
                 const response = await fetch(API_URL, { method: 'GET' });
-                if (!response.ok) throw new Error('Failed to fetch notes');
+                if (!response.ok) throw new Error(`Failed to fetch notes from ${API_URL}`);
                 allNotes = await response.json();
                 setConnectionStatus(true);
                 renderNotes();
             } catch (error) {
-                console.error('Error fetching notes:', error);
+                console.error(`Error fetching notes from ${API_URL}:`, error);
                 setConnectionStatus(false);
-                noteCountLabel.textContent = 'Cannot reach https://nodenotes-backend.vercel.app';
+                noteCountLabel.textContent = `Cannot reach ${API_URL}`;
                 notesGrid.innerHTML = `
                     <div class="empty-state">
                         <h3>Backend not reachable</h3>
-                        <p>Make sure your Express server is running on port 3000.</p>
+                        <p>Could not connect to ${escapeHTML(API_URL)}</p>
                     </div>
                 `;
             }
@@ -703,7 +726,7 @@
         function renderNotes() {
             const query = searchInput.value.trim().toLowerCase();
             const filtered = allNotes.filter(item =>
-                item.note.toLowerCase().includes(query)
+                (item.content || '').toLowerCase().includes(query)
             );
 
             const count = filtered.length;
@@ -719,16 +742,18 @@
                 return;
             }
 
-            notesGrid.innerHTML = filtered.map(item => {
-                const safeText = escapeHTML(item.note);
-                const safeTitle = escapeHTML(extractTitle(item.note));
+            notesGrid.innerHTML = filtered.map((item) => {
+                const safeText = escapeHTML(item.content);
+                const safeTitle = escapeHTML(extractTitle(item.content));
+                const formattedDate = formatDate(item.date);
+
                 return `
-                    <article class="note-item" data-id="${item.id}">
+                    <article class="note-item" data-id="${escapeHTML(item._id)}">
                         <div class="note-card-surface">
                             <div class="note-preview-text">${safeText}</div>
                             <div class="note-card-footer">
-                                <span class="note-id-chip">#${item.id}</span>
-                                <button class="delete-card-btn" data-delete-id="${item.id}" title="Delete note" aria-label="Delete note">
+                                <span class="note-date-chip">${formattedDate}</span>
+                                <button class="delete-card-btn" data-delete-id="${escapeHTML(item._id)}" title="Delete note" aria-label="Delete note">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <polyline points="3 6 5 6 21 6"></polyline>
                                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -738,7 +763,7 @@
                         </div>
                         <div class="note-meta">
                             <div class="note-title-label">${safeTitle}</div>
-                            <div class="note-date-label">${formatToday()}</div>
+                            <div class="note-date-label">${formattedDate}</div>
                         </div>
                     </article>
                 `;
@@ -748,9 +773,9 @@
         // Open Editor (Create or Edit)
         function openEditor(noteObj = null) {
             if (noteObj) {
-                activeNoteId = noteObj.id;
-                editorModeTag.textContent = `Note #${noteObj.id}`;
-                noteTextarea.value = noteObj.note;
+                activeNoteId = noteObj._id;
+                editorModeTag.textContent = formatDate(noteObj.date, true);
+                noteTextarea.value = noteObj.content || '';
                 modalDeleteBtn.style.display = 'inline-block';
             } else {
                 activeNoteId = null;
@@ -768,7 +793,7 @@
             noteTextarea.value = '';
         }
 
-        // CREATE (POST /) or UPDATE (PUT /)
+        // CREATE (POST) or UPDATE (PUT)
         async function saveNote() {
             const text = noteTextarea.value.trim();
             if (!text) {
@@ -778,23 +803,21 @@
 
             try {
                 if (activeNoteId === null) {
-                    // POST Request
                     const res = await fetch(API_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ note: text })
                     });
-                    if (!res.ok) throw new Error('Failed to create note');
+                    if (!res.ok) throw new Error(`POST failed at ${API_URL}`);
                     const msg = await res.text();
                     showToast(msg || 'Note added');
                 } else {
-                    // PUT Request
                     const res = await fetch(API_URL, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ id: activeNoteId, note: text })
                     });
-                    if (!res.ok) throw new Error('Failed to update note');
+                    if (!res.ok) throw new Error(`PUT failed at ${API_URL}`);
                     const msg = await res.text();
                     showToast(msg || 'Note updated');
                 }
@@ -803,28 +826,28 @@
                 await fetchNotes();
             } catch (error) {
                 console.error(error);
-                showToast('Error saving note');
+                showToast(`Request failed (${API_URL})`);
             }
         }
 
-        // DELETE (DELETE /)
+        // DELETE
         async function deleteNote(id) {
             try {
                 const res = await fetch(API_URL, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: Number(id) })
+                    body: JSON.stringify({ id: id })
                 });
-                if (!res.ok) throw new Error('Failed to delete note');
+                if (!res.ok) throw new Error(`DELETE failed at ${API_URL}`);
                 const msg = await res.text();
                 showToast(msg || 'Note deleted');
-                if (activeNoteId === Number(id)) {
+                if (activeNoteId === id) {
                     closeEditor();
                 }
                 await fetchNotes();
             } catch (error) {
                 console.error(error);
-                showToast('Error deleting note');
+                showToast(`Delete failed (${API_URL})`);
             }
         }
 
@@ -862,8 +885,8 @@
 
             const card = e.target.closest('.note-item');
             if (card) {
-                const id = Number(card.dataset.id);
-                const noteObj = allNotes.find(n => n.id === id);
+                const id = card.dataset.id;
+                const noteObj = allNotes.find(n => n._id === id);
                 if (noteObj) openEditor(noteObj);
             }
         });
